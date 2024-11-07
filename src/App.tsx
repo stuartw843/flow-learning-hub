@@ -21,11 +21,11 @@ function App() {
     try {
       setIsLoading(true);
       const loadedModules = await moduleService.getAll();
-      console.log('Loaded modules:', loadedModules);
+      
       setModules(loadedModules);
       if (loadedModules.length > 0 && !selectedModule) {
         setSelectedModule(loadedModules[0]);
-        console.log('Initial selected module:', loadedModules[0]);
+        
       }
     } catch (err) {
       setError('Failed to load modules');
@@ -41,12 +41,12 @@ function App() {
         title: `New Module ${modules.length + 1}`,
         content: 'Start writing your content here...',
       };
-      console.log('Creating new module:', newModule);
+      
       const created = await moduleService.create(newModule);
-      console.log('Created module:', created);
+      
       setModules([...modules, created]);
       setSelectedModule(created);
-      console.log('Selected module after creation:', created);
+      
     } catch (err) {
       setError('Failed to create module');
       console.error('Create module error:', err);
@@ -55,18 +55,18 @@ function App() {
 
   const updateModuleContent = async (content: string) => {
     if (!selectedModule?.id) return;
-    console.log('Updating module content:', { moduleId: selectedModule.id, content: content.substring(0, 100) + '...' });
+    
     try {
       const updated = await moduleService.update(selectedModule.id, {
         title: selectedModule.title,
         content
       });
-      console.log('Module content updated:', updated);
+      
       setModules(prevModules => 
         prevModules.map(mod => mod.id === updated.id ? updated : mod)
       );
       setSelectedModule(updated);
-      console.log('Selected module after content update:', updated);
+      
     } catch (err) {
       setError('Failed to update module content');
       console.error('Update content error:', err);
@@ -76,19 +76,19 @@ function App() {
   const updateModuleTitle = async (id: number, title: string) => {
     const module = modules.find(m => m.id === id);
     if (!module) return;
-    console.log('Updating module title:', { moduleId: id, title });
+    
     try {
       const updated = await moduleService.update(id, {
         title,
         content: module.content
       });
-      console.log('Module title updated:', updated);
+      
       setModules(prevModules => 
         prevModules.map(mod => mod.id === updated.id ? updated : mod)
       );
       if (selectedModule?.id === id) {
         setSelectedModule(updated);
-        console.log('Selected module after title update:', updated);
+        
       }
     } catch (err) {
       setError('Failed to update module title');
@@ -97,15 +97,15 @@ function App() {
   };
 
   const deleteModule = async (id: number) => {
-    console.log('Deleting module:', id);
+    
     try {
       await moduleService.delete(id);
-      console.log('Module deleted:', id);
+      
       const newModules = modules.filter(mod => mod.id !== id);
       setModules(newModules);
       if (selectedModule?.id === id && newModules.length > 0) {
         setSelectedModule(newModules[0]);
-        console.log('Selected module after deletion:', newModules[0]);
+        
       } else if (newModules.length === 0) {
         setSelectedModule(null);
         console.log('No modules left, selected module set to null');
@@ -117,16 +117,16 @@ function App() {
   };
 
   const handleModuleSelect = (module: Module) => {
-    console.log('Selected module:', module);
+    
     setSelectedModule(module);
-    console.log('Selected module after selection:', module);
+    
     setIsMobileMenuOpen(false);
   };
 
   const handleReorderModules = async (orderedIds: number[]) => {
     try {
       const updatedModules = await moduleService.reorder(orderedIds);
-      console.log('Modules reordered:', updatedModules);
+      
       setModules(updatedModules);
     } catch (err) {
       setError('Failed to reorder modules');

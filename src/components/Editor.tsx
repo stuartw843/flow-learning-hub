@@ -32,8 +32,6 @@ function Editor({ moduleId, content, title, onChange }: EditorProps) {
     // Create fresh editor div
     const editorDiv = document.createElement('div');
     editorRef.current.appendChild(editorDiv);
-
-    console.log('Initializing Quill editor');
     const toolbarOptions = [
       ['bold', 'italic', 'underline', 'strike'],
       ['blockquote', 'code-block'],
@@ -78,7 +76,6 @@ function Editor({ moduleId, content, title, onChange }: EditorProps) {
     quill.on('text-change', handleTextChange);
 
     return () => {
-      console.log('Cleaning up Quill editor');
       if (quillRef.current) {
         quillRef.current.off('text-change');
       }
@@ -119,13 +116,13 @@ function Editor({ moduleId, content, title, onChange }: EditorProps) {
           }
           .save-status {
             position: fixed;
-            bottom: 1rem;
+            top: 7rem;
             right: 1rem;
             padding: 0.5rem 1rem;
             border-radius: 0.375rem;
             font-size: 0.875rem;
             color: #4b5563;
-            background-color: #f3f4f6;
+            background-color: ${saveStatus === 'saving' ? '#fef3c7' : '#f3f4f6'};
             transition: opacity 150ms ease-in-out;
           }
         `}

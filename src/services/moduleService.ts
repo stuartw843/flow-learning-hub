@@ -38,7 +38,6 @@ export const moduleService = {
   },
 
   async update(id: number, module: ModuleUpdate): Promise<Module> {
-    console.log('Sending update request:', { id, module });
     const response = await fetch(`${API_URL}/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -49,7 +48,6 @@ export const moduleService = {
       throw new Error('Failed to update module');
     }
     const result = await response.json();
-    console.log('Update successful:', result);
     return result;
   },
 

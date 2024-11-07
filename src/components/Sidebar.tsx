@@ -72,7 +72,6 @@ function Sidebar({
 
   const handleModuleSelect = (module: Module) => {
     const currentScroll = navRef.current?.scrollTop;
-    console.log(module)
     onSelectModule(module);
     if (navRef.current && currentScroll !== undefined) {
       requestAnimationFrame(() => {
