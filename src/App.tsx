@@ -11,6 +11,13 @@ function App() {
   const [selectedModule, setSelectedModule] = useState<Module | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
+
+  // Check URL parameter for edit mode
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setEditMode(params.get('edit') === 'true');
+  }, []);
 
   // Load modules on mount
   useEffect(() => {
@@ -25,7 +32,6 @@ function App() {
       setModules(loadedModules);
       if (loadedModules.length > 0 && !selectedModule) {
         setSelectedModule(loadedModules[0]);
-        
       }
     } catch (err) {
       setError('Failed to load modules');
@@ -36,10 +42,12 @@ function App() {
   };
 
   const addModule = async () => {
+    if (!editMode) return;
     try {
       const newModule = {
         title: `New Module ${modules.length + 1}`,
         content: 'Start writing your content here...',
+        plain_content: ''
       };
       
       const created = await moduleService.create(newModule);
@@ -53,13 +61,14 @@ function App() {
     }
   };
 
-  const updateModuleContent = async (content: string) => {
-    if (!selectedModule?.id) return;
+  const updateModuleContent = async (content: string, plain_content?: string) => {
+    if (!editMode || !selectedModule?.id) return;
     
     try {
       const updated = await moduleService.update(selectedModule.id, {
         title: selectedModule.title,
-        content
+        content,
+        ...(plain_content !== undefined && { plain_content })
       });
       
       setModules(prevModules => 
@@ -74,13 +83,15 @@ function App() {
   };
 
   const updateModuleTitle = async (id: number, title: string) => {
+    if (!editMode) return;
     const module = modules.find(m => m.id === id);
     if (!module) return;
     
     try {
       const updated = await moduleService.update(id, {
         title,
-        content: module.content
+        content: module.content,
+        plain_content: module.plain_content
       });
       
       setModules(prevModules => 
@@ -88,7 +99,6 @@ function App() {
       );
       if (selectedModule?.id === id) {
         setSelectedModule(updated);
-        
       }
     } catch (err) {
       setError('Failed to update module title');
@@ -97,6 +107,7 @@ function App() {
   };
 
   const deleteModule = async (id: number) => {
+    if (!editMode) return;
     
     try {
       await moduleService.delete(id);
@@ -105,10 +116,8 @@ function App() {
       setModules(newModules);
       if (selectedModule?.id === id && newModules.length > 0) {
         setSelectedModule(newModules[0]);
-        
       } else if (newModules.length === 0) {
         setSelectedModule(null);
-        console.log('No modules left, selected module set to null');
       }
     } catch (err) {
       setError('Failed to delete module');
@@ -117,16 +126,14 @@ function App() {
   };
 
   const handleModuleSelect = (module: Module) => {
-    
     setSelectedModule(module);
-    
     setIsMobileMenuOpen(false);
   };
 
   const handleReorderModules = async (orderedIds: number[]) => {
+    if (!editMode) return;
     try {
       const updatedModules = await moduleService.reorder(orderedIds);
-      
       setModules(updatedModules);
     } catch (err) {
       setError('Failed to reorder modules');
@@ -181,6 +188,7 @@ function App() {
         onAddModule={addModule}
         onUpdateTitle={updateModuleTitle}
         onDeleteModule={deleteModule}
+        editMode={editMode}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -192,6 +200,7 @@ function App() {
           onUpdateTitle={updateModuleTitle}
           onDeleteModule={deleteModule}
           onReorderModules={handleReorderModules}
+          editMode={editMode}
         />
         
         <main className="flex-1 overflow-auto bg-white">
@@ -199,8 +208,10 @@ function App() {
             <Editor
               moduleId={selectedModule.id}
               content={selectedModule.content}
+              plainContent={selectedModule.plain_content}
               title={selectedModule.title}
               onChange={updateModuleContent}
+              editMode={editMode}
             />
           )}
         </main>

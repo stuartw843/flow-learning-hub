@@ -4,6 +4,7 @@ export interface Module {
   id?: number;
   title: string;
   content: string;
+  plain_content: string;
   display_order?: number;
   created_at?: string;
   updated_at?: string;
@@ -12,6 +13,7 @@ export interface Module {
 export interface ModuleUpdate {
   title?: string;
   content?: string;
+  plain_content?: string;
 }
 
 export const moduleService = {

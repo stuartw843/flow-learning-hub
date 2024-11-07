@@ -7,6 +7,7 @@ interface Module {
   id?: number;
   title: string;
   content: string;
+  plain_content: string;
   display_order: number;
   created_at?: string;
   updated_at?: string;
@@ -41,15 +42,15 @@ router.get('/:id', async (req: Request, res: Response) => {
 
 // Create module
 router.post('/', async (req: Request, res: Response) => {
-  const { title, content } = req.body as Module;
+  const { title, content, plain_content } = req.body as Module;
   try {
     const db = await getDb();
     const maxOrder = await db!.get('SELECT MAX(display_order) as maxOrder FROM modules');
     const nextOrder = (maxOrder?.maxOrder || 0) + 1;
     
     const result = await db!.run(
-      'INSERT INTO modules (title, content, display_order) VALUES (?, ?, ?)',
-      [title, content, nextOrder]
+      'INSERT INTO modules (title, content, plain_content, display_order) VALUES (?, ?, ?, ?)',
+      [title, content, plain_content || '', nextOrder]
     );
     const newModule = await db!.get<Module>('SELECT * FROM modules WHERE id = ?', result.lastID);
     res.status(201).json(newModule);
@@ -61,7 +62,7 @@ router.post('/', async (req: Request, res: Response) => {
 
 // Update module
 router.put('/:id', async (req: Request, res: Response) => {
-  console.log('Updating module with ID:', req.params.id); // Added log statement
+  console.log('Updating module with ID:', req.params.id);
   try {
     const db = await getDb();
     const currentModule = await db!.get<Module>('SELECT * FROM modules WHERE id = ?', req.params.id);
@@ -79,6 +80,10 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (req.body.content !== undefined) {
       updates.push('content = ?');
       values.push(req.body.content);
+    }
+    if (req.body.plain_content !== undefined) {
+      updates.push('plain_content = ?');
+      values.push(req.body.plain_content);
     }
     
     updates.push('updated_at = CURRENT_TIMESTAMP');

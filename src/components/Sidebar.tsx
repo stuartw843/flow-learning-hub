@@ -10,6 +10,7 @@ interface SidebarProps {
   onUpdateTitle: (id: number, title: string) => void;
   onDeleteModule: (id: number) => void;
   onReorderModules: (orderedIds: number[]) => void;
+  editMode: boolean;
 }
 
 function Sidebar({ 
@@ -19,7 +20,8 @@ function Sidebar({
   onAddModule, 
   onUpdateTitle, 
   onDeleteModule,
-  onReorderModules 
+  onReorderModules,
+  editMode
 }: SidebarProps) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -41,16 +43,19 @@ function Sidebar({
   };
 
   const handleDragStart = (e: React.DragEvent, moduleId: number) => {
+    if (!editMode) return;
     setDraggedId(moduleId);
     e.dataTransfer.effectAllowed = 'move';
   };
 
   const handleDragOver = (e: React.DragEvent) => {
+    if (!editMode) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   };
 
   const handleDrop = (e: React.DragEvent, targetId: number) => {
+    if (!editMode) return;
     e.preventDefault();
     if (draggedId === null || draggedId === targetId) return;
 
@@ -86,13 +91,15 @@ function Sidebar({
     <div className="hidden lg:flex w-64 bg-gray-800 text-white overflow-y-auto flex-col">
       <div className="p-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold">Modules</h2>
-        <button
-          onClick={onAddModule}
-          className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-          aria-label="Add new module"
-        >
-          <Plus size={20} />
-        </button>
+        {editMode && (
+          <button
+            onClick={onAddModule}
+            className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+            aria-label="Add new module"
+          >
+            <Plus size={20} />
+          </button>
+        )}
       </div>
       
       <nav ref={navRef} className="flex-1">
@@ -101,7 +108,7 @@ function Sidebar({
             <li 
               key={module.id} 
               className="group"
-              draggable={editingId !== module.id}
+              draggable={editMode && editingId !== module.id}
               onDragStart={(e) => module.id && handleDragStart(e, module.id)}
               onDragOver={handleDragOver}
               onDrop={(e) => module.id && handleDrop(e, module.id)}
@@ -134,29 +141,33 @@ function Sidebar({
                     ? 'bg-indigo-600 text-white'
                     : 'hover:bg-gray-700'
                 } ${draggedId === module.id ? 'opacity-50' : ''}`}>
-                  <div className="px-2 cursor-grab">
-                    <GripVertical size={16} className="text-gray-400" />
-                  </div>
+                  {editMode && (
+                    <div className="px-2 cursor-grab">
+                      <GripVertical size={16} className="text-gray-400" />
+                    </div>
+                  )}
                   <button
                     onClick={() => handleModuleSelect(module)}
                     className="flex-1 text-left px-2 py-2"
                   >
                     {module.title}
                   </button>
-                  <div className="opacity-0 group-hover:opacity-100 flex pr-2">
-                    <button
-                      onClick={() => startEditing(module)}
-                      className="p-1 hover:bg-gray-600 rounded-lg ml-1"
-                    >
-                      <Pencil size={16} />
-                    </button>
-                    <button
-                      onClick={() => module.id && onDeleteModule(module.id)}
-                      className="p-1 hover:bg-gray-600 rounded-lg ml-1"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
+                  {editMode && (
+                    <div className="opacity-0 group-hover:opacity-100 flex pr-2">
+                      <button
+                        onClick={() => startEditing(module)}
+                        className="p-1 hover:bg-gray-600 rounded-lg ml-1"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        onClick={() => module.id && onDeleteModule(module.id)}
+                        className="p-1 hover:bg-gray-600 rounded-lg ml-1"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </li>

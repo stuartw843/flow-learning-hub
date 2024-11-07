@@ -10,9 +10,19 @@ interface MobileMenuProps {
   onAddModule: () => void;
   onUpdateTitle: (id: number, title: string) => void;
   onDeleteModule: (id: number) => void;
+  editMode: boolean;
 }
 
-function MobileMenu({ isOpen, modules, selectedModule, onSelectModule, onAddModule, onUpdateTitle, onDeleteModule }: MobileMenuProps) {
+function MobileMenu({ 
+  isOpen, 
+  modules, 
+  selectedModule, 
+  onSelectModule, 
+  onAddModule, 
+  onUpdateTitle, 
+  onDeleteModule,
+  editMode 
+}: MobileMenuProps) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const navRef = useRef<HTMLElement>(null);
@@ -49,13 +59,15 @@ function MobileMenu({ isOpen, modules, selectedModule, onSelectModule, onAddModu
     <div className="lg:hidden fixed inset-x-0 top-[57px] bg-gray-800 text-white z-40 max-h-[70vh] overflow-y-auto">
       <div className="p-4 flex items-center justify-between border-b border-gray-700">
         <h2 className="text-lg font-semibold">Modules</h2>
-        <button
-          onClick={onAddModule}
-          className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-          aria-label="Add new module"
-        >
-          <Plus size={20} />
-        </button>
+        {editMode && (
+          <button
+            onClick={onAddModule}
+            className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+            aria-label="Add new module"
+          >
+            <Plus size={20} />
+          </button>
+        )}
       </div>
       
       <nav ref={navRef} className="p-2">
@@ -96,20 +108,22 @@ function MobileMenu({ isOpen, modules, selectedModule, onSelectModule, onAddModu
                   >
                     {module.title}
                   </button>
-                  <div className="flex pr-2">
-                    <button
-                      onClick={() => startEditing(module)}
-                      className="p-1 hover:bg-gray-600 rounded-lg ml-1"
-                    >
-                      <Pencil size={16} />
-                    </button>
-                    <button
-                      onClick={() => module.id && onDeleteModule(module.id)}
-                      className="p-1 hover:bg-gray-600 rounded-lg ml-1"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
+                  {editMode && (
+                    <div className="flex pr-2">
+                      <button
+                        onClick={() => startEditing(module)}
+                        className="p-1 hover:bg-gray-600 rounded-lg ml-1"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        onClick={() => module.id && onDeleteModule(module.id)}
+                        className="p-1 hover:bg-gray-600 rounded-lg ml-1"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </li>
