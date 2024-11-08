@@ -178,7 +178,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       
       const { token } = await resp.json();
       console.log('Credentials received, starting conversation...');
-
+      console.log(resp)
       const context = new AudioContext({ sampleRate: SAMPLE_RATE });
       setAudioContext(context);
 
