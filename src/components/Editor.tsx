@@ -230,16 +230,11 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       setIsListening(true);
       setError(null);
     } catch (error) {
-      if (error instanceof Error) {
-        if (error.name === 'AbortError') {
-          console.log('Request was aborted');
-          return;
-        }
-        console.error('Error starting session:', error);
-        setError(error.message);
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Request was aborted');
       } else {
-        console.error('Unknown error starting session:', error);
-        setError('Failed to start conversation');
+        console.error('Error starting session:', error);
+        setError(error instanceof Error ? error.message : 'Failed to start conversation');
       }
       setIsListening(false);
     } finally {
@@ -248,13 +243,11 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
   }, [startRecording, queueAudio, plainContent, style, persona]);
 
   const stopSession = useCallback(async () => {
-    // Cancel any pending fetch request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
 
-    // Remove event listeners
     if (messageHandlerRef.current) {
       flowClient.removeEventListener("message", messageHandlerRef.current);
       messageHandlerRef.current = null;
@@ -264,7 +257,6 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       audioHandlerRef.current = null;
     }
 
-    // End conversation and cleanup audio resources
     flowClient.endConversation();
     stopRecording();
 
@@ -278,7 +270,6 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       playbackContextRef.current = null;
     }
 
-    // Clear audio queue and reset flags
     audioQueueRef.current = [];
     nextPlayTimeRef.current = 0;
     isProcessingRef.current = false;
@@ -298,17 +289,14 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
   useEffect(() => {
     if (!editorRef.current) return;
 
-    // Clean up existing instance if it exists
     if (quillRef.current) {
       quillRef.current.off('text-change');
-      // Remove all Quill-related elements
       while (editorRef.current.firstChild) {
         editorRef.current.removeChild(editorRef.current.firstChild);
       }
       quillRef.current = null;
     }
 
-    // Create fresh editor div
     const editorDiv = document.createElement('div');
     editorRef.current.appendChild(editorDiv);
     const toolbarOptions = [
@@ -338,7 +326,6 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
 
     quillRef.current = quill;
     
-    // Set initial content
     isLoadingRef.current = true;
     quill.root.innerHTML = content;
     lastContentRef.current = content;
@@ -355,7 +342,6 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       }
 
       saveTimeoutRef.current = setTimeout(() => {
-        // Only update the HTML content, keep other values unchanged
         onChange(quill.root.innerHTML);
         setSaveStatus('saved');
       }, 1000);
@@ -373,7 +359,6 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
     };
   }, [moduleId, editMode]);
 
-  // Update content when it changes externally
   useEffect(() => {
     if (!quillRef.current || content === lastContentRef.current) return;
 
@@ -384,7 +369,6 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
     quill.root.innerHTML = content;
     lastContentRef.current = content;
     
-    // Restore selection if it existed
     if (selection) {
       setTimeout(() => {
         quill.setSelection(selection);
@@ -397,13 +381,11 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
     }
   }, [content]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (isListening) {
         stopSession();
       }
-      // Ensure any pending fetch requests are cancelled
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
