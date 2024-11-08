@@ -47,7 +47,9 @@ function App() {
       const newModule = {
         title: `New Module ${modules.length + 1}`,
         content: 'Start writing your content here...',
-        plain_content: ''
+        plain_content: '',
+        style: '',
+        persona: ''
       };
       
       const created = await moduleService.create(newModule);
@@ -61,14 +63,16 @@ function App() {
     }
   };
 
-  const updateModuleContent = async (content: string, plain_content?: string) => {
+  const updateModuleContent = async (content: string, plain_content?: string, style?: string, persona?: string) => {
     if (!editMode || !selectedModule?.id) return;
     
     try {
       const updated = await moduleService.update(selectedModule.id, {
         title: selectedModule.title,
         content,
-        ...(plain_content !== undefined && { plain_content })
+        ...(plain_content !== undefined && { plain_content }),
+        ...(style !== undefined && { style }),
+        ...(persona !== undefined && { persona })
       });
       
       setModules(prevModules => 
@@ -91,7 +95,9 @@ function App() {
       const updated = await moduleService.update(id, {
         title,
         content: module.content,
-        plain_content: module.plain_content
+        plain_content: module.plain_content,
+        style: module.style,
+        persona: module.persona
       });
       
       setModules(prevModules => 
@@ -209,6 +215,8 @@ function App() {
               moduleId={selectedModule.id}
               content={selectedModule.content}
               plainContent={selectedModule.plain_content}
+              style={selectedModule.style}
+              persona={selectedModule.persona}
               title={selectedModule.title}
               onChange={updateModuleContent}
               editMode={editMode}

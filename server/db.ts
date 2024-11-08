@@ -24,6 +24,8 @@ export async function initializeDatabase() {
       title TEXT NOT NULL,
       content TEXT NOT NULL,
       plain_content TEXT DEFAULT '',
+      style TEXT DEFAULT '',
+      persona TEXT DEFAULT '',
       display_order INTEGER NOT NULL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP

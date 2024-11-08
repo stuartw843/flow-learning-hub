@@ -8,8 +8,10 @@ interface EditorProps {
   moduleId: number;
   content: string;
   plainContent: string;
+  style: string;
+  persona: string;
   title: string;
-  onChange: (content: string, plainContent?: string) => void;
+  onChange: (content: string, plainContent?: string, style?: string, persona?: string) => void;
   editMode: boolean;
 }
 
@@ -25,13 +27,16 @@ interface ErrorData {
 const SAMPLE_RATE = 16000;
 const flowClient = new FlowClient('wss://flow.api.speechmatics.com', { appId: "example" });
 
-function Editor({ moduleId, content, plainContent, title, onChange, editMode }: EditorProps) {
+function Editor({ moduleId, content, plainContent, style, persona, title, onChange, editMode }: EditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const quillRef = useRef<Quill | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout>();
   const isLoadingRef = useRef(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
-  const [localPlainContent, setLocalPlainContent] = useState('');
+  const [localPlainContent, setLocalPlainContent] = useState(plainContent || '');
+  const [localStyle, setLocalStyle] = useState(style || '');
+  const [localPersona, setLocalPersona] = useState(persona || '');
+  const [activeTab, setActiveTab] = useState('context');
   const [isListening, setIsListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioContext, setAudioContext] = useState<AudioContext>();
@@ -46,6 +51,8 @@ function Editor({ moduleId, content, plainContent, title, onChange, editMode }: 
   useEffect(() => {
     isLoadingRef.current = true;
     setLocalPlainContent(plainContent || '');
+    setLocalStyle(style || '');
+    setLocalPersona(persona || '');
     setSaveStatus('saved');
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -54,7 +61,7 @@ function Editor({ moduleId, content, plainContent, title, onChange, editMode }: 
     setTimeout(() => {
       isLoadingRef.current = false;
     }, 0);
-  }, [moduleId]);
+  }, [moduleId, plainContent, style, persona]);
 
   const processAudioQueue = useCallback(async () => {
     if (isProcessingRef.current || !playbackContextRef.current || audioQueueRef.current.length === 0) {
@@ -180,8 +187,8 @@ function Editor({ moduleId, content, plainContent, title, onChange, editMode }: 
           template_id: "flow-service-assistant-amelia",
           template_variables: {
             context: plainContent || '',
-            persona: "You are a Product Manager at a company interested in purchasing Automatic Speech Recognition (ASR) API services. You are evaluating different ASR providers and want to understand their capabilities, pricing, and integration requirements. You are knowledgeable about technical aspects but primarily focused on business value, ROI, and how the ASR solution can benefit your company's products.",
-            style: "Professional and business-focused, but conversational. You should ask questions about ASR capabilities, accuracy rates, language support, pricing models, and integration complexity. Express interest in real-world use cases and success stories. Be analytical about ROI and technical requirements while maintaining a friendly, collaborative tone."
+            persona: persona || '',
+            style: style || '',
           },
         },
         audioFormat: {
@@ -200,7 +207,7 @@ function Editor({ moduleId, content, plainContent, title, onChange, editMode }: 
       setError(error instanceof Error ? error.message : 'Failed to start conversation');
       setIsListening(false);
     }
-  }, [startRecording, queueAudio, plainContent]);
+  }, [startRecording, queueAudio, plainContent, style, persona]);
 
   const stopSession = useCallback(async () => {
     flowClient.endConversation();
@@ -283,7 +290,8 @@ function Editor({ moduleId, content, plainContent, title, onChange, editMode }: 
       }
 
       saveTimeoutRef.current = setTimeout(() => {
-        onChange(quill.root.innerHTML, localPlainContent);
+        // Only update the HTML content, keep other values unchanged
+        onChange(quill.root.innerHTML);
         setSaveStatus('saved');
       }, 1000);
     };
@@ -323,7 +331,41 @@ function Editor({ moduleId, content, plainContent, title, onChange, editMode }: 
     }
 
     saveTimeoutRef.current = setTimeout(() => {
-      onChange(quillRef.current?.root.innerHTML || '', newContent);
+      onChange(quillRef.current?.root.innerHTML || '', newContent, localStyle, localPersona);
+      setSaveStatus('saved');
+    }, 1000);
+  };
+
+  const handleStyleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    if (!editMode || isLoadingRef.current) return;
+    
+    const newStyle = e.target.value;
+    setLocalStyle(newStyle);
+    setSaveStatus('saving');
+    
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(() => {
+      onChange(quillRef.current?.root.innerHTML || '', localPlainContent, newStyle, localPersona);
+      setSaveStatus('saved');
+    }, 1000);
+  };
+
+  const handlePersonaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    if (!editMode || isLoadingRef.current) return;
+    
+    const newPersona = e.target.value;
+    setLocalPersona(newPersona);
+    setSaveStatus('saving');
+    
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(() => {
+      onChange(quillRef.current?.root.innerHTML || '', localPlainContent, localStyle, newPersona);
       setSaveStatus('saved');
     }, 1000);
   };
@@ -334,7 +376,7 @@ function Editor({ moduleId, content, plainContent, title, onChange, editMode }: 
         {`
           .ql-container {
             font-size: 16px;
-            height: ${editMode ? 'calc(80%)' : '100%'} !important;
+            height: 90% !important;
           }
           .ql-toolbar {
             display: ${editMode ? 'block' : 'none'};
@@ -347,9 +389,12 @@ function Editor({ moduleId, content, plainContent, title, onChange, editMode }: 
             top: 0;
             z-index: 10;
           }
+          .editor-box{
+            min-height:70%
+          }
           .ql-editor {
             padding: 1.5rem;
-            min-height: 100%;
+            min-height: 60%;
           }
           .ql-editor.ql-blank::before {
             display: ${editMode ? 'block' : 'none'};
@@ -357,7 +402,7 @@ function Editor({ moduleId, content, plainContent, title, onChange, editMode }: 
           .save-status {
             position: fixed;
             top: 7rem;
-            right: 1rem;
+            right: 4rem;
             padding: 0.5rem 1rem;
             border-radius: 0.375rem;
             font-size: 0.875rem;
@@ -365,39 +410,98 @@ function Editor({ moduleId, content, plainContent, title, onChange, editMode }: 
             background-color: ${saveStatus === 'saving' ? '#fef3c7' : '#f3f4f6'};
             transition: opacity 150ms ease-in-out;
             display: ${editMode ? 'block' : 'none'};
+            z-index: 20;
+          }
+          .tab-active {
+            color: #4f46e5;
+            border-bottom: 2px solid #4f46e5;
+          }
+          .tab-content {
+            height: calc(100vh - 13rem);
+            overflow-y: auto;
           }
         `}
       </style>
-      <div ref={editorRef} className="h-3/4" />
       {!editMode && plainContent && (
-        <div className="relative">
+        <div className="flex items-center gap-2 p-4 border-b border-gray-200">
           <button
             onClick={handleVoiceClick}
-            className={`absolute right-6 -top-3 p-2 rounded-full ${
+            className={`p-2 rounded-full ${
               isListening ? 'bg-red-500' : 'bg-blue-500'
             } text-white hover:opacity-80 transition-opacity`}
             title={error || (isListening ? 'Stop conversation' : 'Start conversation')}
           >
             <FaMicrophone className="w-5 h-5" />
           </button>
+          <span className="text-gray-700 font-medium">Voice Simulated Scenario</span>
           {error && (
-            <div className="absolute right-6 top-6 p-2 bg-red-100 text-red-700 rounded text-sm">
+            <div className="ml-4 p-2 bg-red-100 text-red-700 rounded text-sm">
               {error}
             </div>
           )}
-          <div className="h-1/2 p-6 border-t border-gray-200 whitespace-pre-wrap">
-            {plainContent}
-          </div>
         </div>
       )}
+      <div ref={editorRef} className="flex-1 editor-box" />
+      
       {editMode && (
-        <textarea
-          key={moduleId}
-          value={localPlainContent}
-          onChange={handlePlainContentChange}
-          className="h-1/4 p-6 border-t border-gray-200 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          placeholder="Add plain text content here..."
-        />
+        <div className="border-t border-gray-200">
+          <h2 className="text-xl font-bold px-4 py-3 border-b border-gray-200">Voice interaction scenario:</h2>
+          <div className="flex border-b border-gray-200">
+            <button
+              onClick={() => setActiveTab('context')}
+              className={`px-4 py-2 text-sm font-medium ${
+                activeTab === 'context' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Context
+            </button>
+            <button
+              onClick={() => setActiveTab('style')}
+              className={`px-4 py-2 text-sm font-medium ${
+                activeTab === 'style' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Style
+            </button>
+            <button
+              onClick={() => setActiveTab('persona')}
+              className={`px-4 py-2 text-sm font-medium ${
+                activeTab === 'persona' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Persona
+            </button>
+          </div>
+          <div className="tab-content">
+            {activeTab === 'context' && (
+              <textarea
+                key={`plain-${moduleId}`}
+                value={localPlainContent}
+                onChange={handlePlainContentChange}
+                className="w-full h-full p-6 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="Add context here..."
+              />
+            )}
+            {activeTab === 'style' && (
+              <textarea
+                key={`style-${moduleId}`}
+                value={localStyle}
+                onChange={handleStyleChange}
+                className="w-full h-full p-6 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="Add style here..."
+              />
+            )}
+            {activeTab === 'persona' && (
+              <textarea
+                key={`persona-${moduleId}`}
+                value={localPersona}
+                onChange={handlePersonaChange}
+                className="w-full h-full p-6 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="Add persona here..."
+              />
+            )}
+          </div>
+        </div>
       )}
       {editMode && (
         <div className="save-status">
