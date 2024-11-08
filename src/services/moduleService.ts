@@ -1,4 +1,6 @@
-const API_URL = 'http://localhost:3001/api/modules';
+import { config } from '../config';
+
+const API_URL = config.modulesUrl;
 
 export interface Module {
   id?: number;
