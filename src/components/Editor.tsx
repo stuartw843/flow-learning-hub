@@ -184,7 +184,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
 
       await flowClient.startConversation(token, {
         config: {
-          template_id: "flow-service-assistant-amelia",
+          template_id: "flow-service-assistant-humphrey",
           template_variables: {
             context: plainContent || '',
             persona: persona || '',
@@ -455,14 +455,14 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
             >
               Context
             </button>
-            <button
+            {/* <button
               onClick={() => setActiveTab('style')}
               className={`px-4 py-2 text-sm font-medium ${
                 activeTab === 'style' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               Style
-            </button>
+            </button> */}
             <button
               onClick={() => setActiveTab('persona')}
               className={`px-4 py-2 text-sm font-medium ${
@@ -482,7 +482,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
                 placeholder="Add context here..."
               />
             )}
-            {activeTab === 'style' && (
+            {/* {activeTab === 'style' && (
               <textarea
                 key={`style-${moduleId}`}
                 value={localStyle}
@@ -490,7 +490,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
                 className="w-full h-full p-6 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 placeholder="Add style here..."
               />
-            )}
+            )} */}
             {activeTab === 'persona' && (
               <textarea
                 key={`persona-${moduleId}`}
