@@ -178,7 +178,11 @@ function Editor({ moduleId, content, plainContent, title, onChange, editMode }: 
       await flowClient.startConversation(token, {
         config: {
           template_id: "flow-service-assistant-amelia",
-          template_variables: {},
+          template_variables: {
+            context: plainContent || '',
+            persona: "You are a Product Manager at a company interested in purchasing Automatic Speech Recognition (ASR) API services. You are evaluating different ASR providers and want to understand their capabilities, pricing, and integration requirements. You are knowledgeable about technical aspects but primarily focused on business value, ROI, and how the ASR solution can benefit your company's products.",
+            style: "Professional and business-focused, but conversational. You should ask questions about ASR capabilities, accuracy rates, language support, pricing models, and integration complexity. Express interest in real-world use cases and success stories. Be analytical about ROI and technical requirements while maintaining a friendly, collaborative tone."
+          },
         },
         audioFormat: {
           type: 'raw',
@@ -196,7 +200,7 @@ function Editor({ moduleId, content, plainContent, title, onChange, editMode }: 
       setError(error instanceof Error ? error.message : 'Failed to start conversation');
       setIsListening(false);
     }
-  }, [startRecording, queueAudio]);
+  }, [startRecording, queueAudio, plainContent]);
 
   const stopSession = useCallback(async () => {
     flowClient.endConversation();
