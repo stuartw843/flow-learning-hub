@@ -3,6 +3,7 @@ import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 import { FaMicrophone } from 'react-icons/fa';
 import { FlowClient } from "@speechmatics/flow-client";
+import { config } from '../config';
 
 interface EditorProps {
   moduleId: number;
@@ -166,7 +167,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       abortControllerRef.current = new AbortController();
 
       console.log('Fetching credentials...');
-      const resp = await fetch('http://localhost:3001/api/speechmatics-credentials', {
+      const resp = await fetch(`${config.apiBaseUrl}/speechmatics-credentials`, {
         method: 'POST',
         signal: abortControllerRef.current.signal
       });
@@ -178,7 +179,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       
       const { token } = await resp.json();
       console.log('Credentials received, starting conversation...');
-      console.log(resp)
+      console.log(token)
       const context = new AudioContext({ sampleRate: SAMPLE_RATE });
       setAudioContext(context);
 
