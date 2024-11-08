@@ -32,6 +32,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
   const quillRef = useRef<Quill | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout>();
   const isLoadingRef = useRef(false);
+  const lastContentRef = useRef(content);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
   const [localPlainContent, setLocalPlainContent] = useState(plainContent || '');
   const [localStyle, setLocalStyle] = useState(style || '');
@@ -59,6 +60,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
+    lastContentRef.current = content;
     // Reset loading flag after state updates
     setTimeout(() => {
       isLoadingRef.current = false;
@@ -306,6 +308,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
     // Set initial content
     isLoadingRef.current = true;
     quill.root.innerHTML = content;
+    lastContentRef.current = content;
     setTimeout(() => {
       isLoadingRef.current = false;
     }, 0);
@@ -339,9 +342,22 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
 
   // Update content when it changes externally
   useEffect(() => {
-    if (quillRef.current && content !== quillRef.current.root.innerHTML) {
-      isLoadingRef.current = true;
-      quillRef.current.root.innerHTML = content;
+    if (!quillRef.current || content === lastContentRef.current) return;
+
+    const quill = quillRef.current;
+    const selection = quill.getSelection();
+    
+    isLoadingRef.current = true;
+    quill.root.innerHTML = content;
+    lastContentRef.current = content;
+    
+    // Restore selection if it existed
+    if (selection) {
+      setTimeout(() => {
+        quill.setSelection(selection);
+        isLoadingRef.current = false;
+      }, 0);
+    } else {
       setTimeout(() => {
         isLoadingRef.current = false;
       }, 0);
