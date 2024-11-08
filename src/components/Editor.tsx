@@ -46,6 +46,8 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
   const nextPlayTimeRef = useRef<number>(0);
   const audioQueueRef = useRef<Int16Array[]>([]);
   const isProcessingRef = useRef<boolean>(false);
+  const messageHandlerRef = useRef<((event: any) => void) | null>(null);
+  const audioHandlerRef = useRef<((event: any) => void) | null>(null);
 
   // Reset local state when module changes
   useEffect(() => {
@@ -141,6 +143,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
     }
     if (mediaStream) {
       mediaStream.getTracks().forEach(track => track.stop());
+      setMediaStream(undefined);
     }
   }, [mediaStream]);
 
@@ -162,7 +165,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       const context = new AudioContext({ sampleRate: SAMPLE_RATE });
       setAudioContext(context);
 
-      flowClient.addEventListener("message", (event) => {
+      const messageHandler = (event: any) => {
         if (event.type === 'transcript') {
           const transcript = event.data as unknown as TranscriptData;
           if (transcript.is_final) {
@@ -176,11 +179,17 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
           console.error('Flow client error:', errorData);
           setError(`Flow client error: ${errorData.message || 'Unknown error'}`);
         }
-      });
+      };
 
-      flowClient.addEventListener("agentAudio", (event) => {
+      const audioHandler = (event: any) => {
         queueAudio(event.data);
-      });
+      };
+
+      messageHandlerRef.current = messageHandler;
+      audioHandlerRef.current = audioHandler;
+
+      flowClient.addEventListener("message", messageHandler);
+      flowClient.addEventListener("agentAudio", audioHandler);
 
       await flowClient.startConversation(token, {
         config: {
@@ -210,11 +219,31 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
   }, [startRecording, queueAudio, plainContent, style, persona]);
 
   const stopSession = useCallback(async () => {
+    // Remove event listeners
+    if (messageHandlerRef.current) {
+      flowClient.removeEventListener("message", messageHandlerRef.current);
+      messageHandlerRef.current = null;
+    }
+    if (audioHandlerRef.current) {
+      flowClient.removeEventListener("agentAudio", audioHandlerRef.current);
+      audioHandlerRef.current = null;
+    }
+
+    // End conversation and cleanup audio resources
     flowClient.endConversation();
     stopRecording();
-    await audioContext?.close();
-    await playbackContextRef.current?.close();
-    playbackContextRef.current = null;
+
+    if (audioContext?.state !== 'closed') {
+      await audioContext?.close();
+      setAudioContext(undefined);
+    }
+
+    if (playbackContextRef.current?.state !== 'closed') {
+      await playbackContextRef.current?.close();
+      playbackContextRef.current = null;
+    }
+
+    // Clear audio queue and reset flags
     audioQueueRef.current = [];
     nextPlayTimeRef.current = 0;
     isProcessingRef.current = false;
@@ -318,6 +347,15 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       }, 0);
     }
   }, [content]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (isListening) {
+        stopSession();
+      }
+    };
+  }, [isListening, stopSession]);
 
   const handlePlainContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     if (!editMode || isLoadingRef.current) return;
@@ -433,7 +471,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
           >
             <FaMicrophone className="w-5 h-5" />
           </button>
-          <span className="text-gray-700 font-medium">Voice Simulated Scenario</span>
+          <span className="text-gray-700 font-medium">Click To Start Voice Simulated Scenario</span>
           {error && (
             <div className="ml-4 p-2 bg-red-100 text-red-700 rounded text-sm">
               {error}
