@@ -33,6 +33,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
   const saveTimeoutRef = useRef<NodeJS.Timeout>();
   const isLoadingRef = useRef(false);
   const lastContentRef = useRef(content);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
   const [localPlainContent, setLocalPlainContent] = useState(plainContent || '');
   const [localStyle, setLocalStyle] = useState(style || '');
@@ -120,22 +121,27 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
   }, [processAudioQueue]);
 
   const startRecording = useCallback(async (context: AudioContext, deviceId?: string) => {
-    const stream = await navigator.mediaDevices.getUserMedia({ 
-      audio: deviceId ? { deviceId: { exact: deviceId } } : true 
-    });
-    
-    await context.audioWorklet.addModule('/src/audio-processor.js');
-    const source = context.createMediaStreamSource(stream);
-    const workletNode = new AudioWorkletNode(context, 'audio-processor');
-    
-    workletNode.port.onmessage = (event) => {
-      flowClient.sendAudio(event.data);
-    };
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: deviceId ? { deviceId: { exact: deviceId } } : true 
+      });
+      
+      await context.audioWorklet.addModule('/src/audio-processor.js');
+      const source = context.createMediaStreamSource(stream);
+      const workletNode = new AudioWorkletNode(context, 'audio-processor');
+      
+      workletNode.port.onmessage = (event) => {
+        flowClient.sendAudio(event.data);
+      };
 
-    source.connect(workletNode);
-    workletNodeRef.current = workletNode;
-    
-    return stream;
+      source.connect(workletNode);
+      workletNodeRef.current = workletNode;
+      
+      return stream;
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      throw error;
+    }
   }, []);
 
   const stopRecording = useCallback(() => {
@@ -151,9 +157,18 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
 
   const startSession = useCallback(async () => {
     try {
+      // Cancel any existing fetch request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+
+      // Create new AbortController for this request
+      abortControllerRef.current = new AbortController();
+
       console.log('Fetching credentials...');
       const resp = await fetch('http://localhost:3001/api/speechmatics-credentials', {
-        method: 'POST'
+        method: 'POST',
+        signal: abortControllerRef.current.signal
       });
       
       if (!resp.ok) {
@@ -214,13 +229,30 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       setIsListening(true);
       setError(null);
     } catch (error) {
-      console.error('Error starting session:', error);
-      setError(error instanceof Error ? error.message : 'Failed to start conversation');
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          console.log('Request was aborted');
+          return;
+        }
+        console.error('Error starting session:', error);
+        setError(error.message);
+      } else {
+        console.error('Unknown error starting session:', error);
+        setError('Failed to start conversation');
+      }
       setIsListening(false);
+    } finally {
+      abortControllerRef.current = null;
     }
   }, [startRecording, queueAudio, plainContent, style, persona]);
 
   const stopSession = useCallback(async () => {
+    // Cancel any pending fetch request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
     // Remove event listeners
     if (messageHandlerRef.current) {
       flowClient.removeEventListener("message", messageHandlerRef.current);
@@ -369,6 +401,11 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
     return () => {
       if (isListening) {
         stopSession();
+      }
+      // Ensure any pending fetch requests are cancelled
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
       }
     };
   }, [isListening, stopSession]);
