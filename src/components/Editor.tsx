@@ -4,7 +4,6 @@ import 'quill/dist/quill.snow.css';
 import { FaMicrophone } from 'react-icons/fa';
 import { FlowClient } from "@speechmatics/flow-client";
 import { config } from '../config';
-import { processorUrl } from '../audio-processor.js'
 
 interface EditorProps {
   moduleId: number;
@@ -138,7 +137,8 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
 
     // Add audio worklet module
     console.log('Adding audio worklet module...');
-    await context.audioWorklet.addModule(processorUrl);
+    const modulePath = new URL('/audio-processor.js', import.meta.url).href;
+    await context.audioWorklet.addModule(modulePath);
     console.log('Audio worklet module added.');
 
     // Create media stream source and worklet node
