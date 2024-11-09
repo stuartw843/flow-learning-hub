@@ -122,28 +122,46 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
   }, [processAudioQueue]);
 
   const startRecording = useCallback(async (context: AudioContext, deviceId?: string) => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: deviceId ? { deviceId: { exact: deviceId } } : true 
-      });
-      
-      await context.audioWorklet.addModule('/src/audio-processor.js');
-      const source = context.createMediaStreamSource(stream);
-      const workletNode = new AudioWorkletNode(context, 'audio-processor');
-      
-      workletNode.port.onmessage = (event) => {
-        flowClient.sendAudio(event.data);
-      };
-
-      source.connect(workletNode);
-      workletNodeRef.current = workletNode;
-      
-      return stream;
-    } catch (error) {
-      console.error('Error starting recording:', error);
-      throw error;
+  try {
+    // Check if permission is granted for microphone access
+    const permissions = await navigator.permissions.query({ name: 'microphone' });
+    if (permissions.state !== 'granted') {
+      throw new Error('Microphone permission is not granted.');
     }
-  }, []);
+
+    console.log('Attempting to access user media...');
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      audio: deviceId ? { deviceId: { exact: deviceId } } : true 
+    });
+    console.log('Microphone access granted, stream started.');
+
+    // Add audio worklet module
+    console.log('Adding audio worklet module...');
+    await context.audioWorklet.addModule('/src/audio-processor.js');
+    console.log('Audio worklet module added.');
+
+    // Create media stream source and worklet node
+    const source = context.createMediaStreamSource(stream);
+    const workletNode = new AudioWorkletNode(context, 'audio-processor');
+
+    workletNode.port.onmessage = (event) => {
+      // Send audio data to flow client
+      flowClient.sendAudio(event.data);
+    };
+
+    // Connect source to worklet node
+    source.connect(workletNode);
+    workletNodeRef.current = workletNode;
+    setMediaStream(stream);  // Update state to keep track of active stream
+
+    return stream;
+  } catch (error) {
+    // Log and set error to help with debugging
+    console.error('Error in startRecording:', error);
+    setError(error.message || 'Failed to start recording');
+    throw error; // rethrow the error if you want to handle it further up
+  }
+}, []);
 
   const stopRecording = useCallback(() => {
     if (workletNodeRef.current) {
