@@ -226,6 +226,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       });
 
       const stream = await startRecording(context);
+      console.log("started recording")
       setMediaStream(stream);
       setIsListening(true);
       setError(null);
