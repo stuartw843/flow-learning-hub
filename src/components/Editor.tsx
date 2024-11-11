@@ -1,9 +1,99 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Quill from 'quill';
+import type { Range } from 'quill';
 import 'quill/dist/quill.snow.css';
 import { FaMicrophone } from 'react-icons/fa';
 import { FlowClient } from "@speechmatics/flow-client";
 import { config } from '../config';
+import ImageResize from 'quill-image-resize-module-react';
+
+// Register the image resize module
+Quill.register('modules/imageResize', ImageResize);
+
+interface RangeStatic {
+  index: number;
+  length: number;
+}
+
+// Maximum image dimensions and size
+const MAX_IMAGE_SIZE = 800;
+const MAX_FILE_SIZE = 200 * 1024; // 200KB
+
+interface KeyboardContext {
+  format: {
+    image?: boolean;
+    [key: string]: any;
+  };
+  offset: number;
+}
+
+// Helper to check if base64 string is too large
+const isBase64TooLarge = (base64String: string) => {
+  // Remove data URL prefix to get actual base64 content
+  const base64WithoutPrefix = base64String.split(',')[1];
+  const stringLength = base64WithoutPrefix.length;
+  const sizeInBytes = 4 * Math.ceil((stringLength / 3))*0.5624896334383812;
+  return sizeInBytes > MAX_FILE_SIZE;
+};
+
+// Image compression function
+const compressImage = async (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+
+      // Calculate new dimensions while maintaining aspect ratio
+      if (width > height) {
+        if (width > MAX_IMAGE_SIZE) {
+          height = Math.round((height * MAX_IMAGE_SIZE) / width);
+          width = MAX_IMAGE_SIZE;
+        }
+      } else {
+        if (height > MAX_IMAGE_SIZE) {
+          width = Math.round((width * MAX_IMAGE_SIZE) / height);
+          height = MAX_IMAGE_SIZE;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      // Start with quality 0.5
+      let quality = 0.5;
+      let base64String = canvas.toDataURL('image/jpeg', quality);
+      
+      // If still too large, reduce quality until it fits
+      while (isBase64TooLarge(base64String) && quality > 0.1) {
+        quality -= 0.1;
+        base64String = canvas.toDataURL('image/jpeg', quality);
+      }
+
+      if (isBase64TooLarge(base64String)) {
+        reject(new Error('Image too large. Please use a smaller image.'));
+        return;
+      }
+
+      URL.revokeObjectURL(img.src);
+      resolve(base64String);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(img.src);
+      reject(new Error('Failed to load image'));
+    };
+  });
+};
 
 interface EditorProps {
   moduleId: number;
@@ -25,6 +115,10 @@ interface ErrorData {
   message: string;
 }
 
+interface QuillToolbar {
+  addHandler: (format: string, handler: () => void) => void;
+}
+
 const SAMPLE_RATE = 16000;
 const flowClient = new FlowClient('wss://flow.api.speechmatics.com', { appId: "example" });
 
@@ -43,6 +137,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
   const [isListening, setIsListening] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
   const [audioContext, setAudioContext] = useState<AudioContext>();
   const [mediaStream, setMediaStream] = useState<MediaStream>();
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
@@ -52,6 +147,16 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
   const isProcessingRef = useRef<boolean>(false);
   const messageHandlerRef = useRef<((event: any) => void) | null>(null);
   const audioHandlerRef = useRef<((event: any) => void) | null>(null);
+
+  // Clear image error after 5 seconds
+  useEffect(() => {
+    if (imageError) {
+      const timer = setTimeout(() => {
+        setImageError(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [imageError]);
 
   // Reset local state when module changes
   useEffect(() => {
@@ -123,43 +228,37 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
   }, [processAudioQueue]);
 
   const startRecording = useCallback(async (context: AudioContext, deviceId?: string) => {
-  try {
-    // Request microphone permission directly instead of querying
-    console.log('Attempting to access user media...');
-    const stream = await navigator.mediaDevices.getUserMedia({ 
-      audio: deviceId ? { deviceId: { exact: deviceId } } : true 
-    });
-    console.log('Microphone access granted, stream started.');
+    try {
+      console.log('Attempting to access user media...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: deviceId ? { deviceId: { exact: deviceId } } : true 
+      });
+      console.log('Microphone access granted, stream started.');
 
-    // Add audio worklet module
-    console.log('Adding audio worklet module...');
-    const modulePath = new URL('/audio-processor.js', import.meta.url).href;
-    await context.audioWorklet.addModule(modulePath);
-    console.log('Audio worklet module added.');
+      console.log('Adding audio worklet module...');
+      const modulePath = new URL('/audio-processor.js', import.meta.url).href;
+      await context.audioWorklet.addModule(modulePath);
+      console.log('Audio worklet module added.');
 
-    // Create media stream source and worklet node
-    const source = context.createMediaStreamSource(stream);
-    const workletNode = new AudioWorkletNode(context, 'audio-processor');
+      const source = context.createMediaStreamSource(stream);
+      const workletNode = new AudioWorkletNode(context, 'audio-processor');
 
-    workletNode.port.onmessage = (event) => {
-      // Send audio data to flow client
-      flowClient.sendAudio(event.data);
-    };
+      workletNode.port.onmessage = (event) => {
+        flowClient.sendAudio(event.data);
+      };
 
-    // Connect source to worklet node
-    source.connect(workletNode);
-    workletNodeRef.current = workletNode;
-    setMediaStream(stream);  // Update state to keep track of active stream
+      source.connect(workletNode);
+      workletNodeRef.current = workletNode;
+      setMediaStream(stream);
 
-    return stream;
-  } catch (error) {
-    // Log and set error to help with debugging
-    console.error('Error in startRecording:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to start recording';
-    setError(errorMessage);
-    throw error; // rethrow the error if you want to handle it further up
-  }
-}, []);
+      return stream;
+    } catch (error) {
+      console.error('Error in startRecording:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to start recording';
+      setError(errorMessage);
+      throw error;
+    }
+  }, []);
 
   const stopRecording = useCallback(() => {
     if (workletNodeRef.current) {
@@ -174,18 +273,15 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
 
   const startSession = useCallback(async () => {
     try {
-      // Ensure complete cleanup of previous session
       await stopSession();
       
       setIsConnecting(true);
       setError(null);
 
-      // Cancel any existing fetch request
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
 
-      // Create new AbortController for this request
       abortControllerRef.current = new AbortController();
 
       console.log('Fetching credentials...');
@@ -202,11 +298,9 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       const { token } = await resp.json();
       console.log('Credentials received, starting conversation...');
       
-      // Create fresh audio context
       const context = new AudioContext({ sampleRate: SAMPLE_RATE });
       setAudioContext(context);
 
-      // Create fresh playback context
       if (playbackContextRef.current) {
         await playbackContextRef.current.close();
       }
@@ -293,7 +387,6 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
     flowClient.endConversation();
     stopRecording();
 
-    // Ensure audio contexts are properly closed
     if (audioContext?.state !== 'closed') {
       await audioContext?.close();
       setAudioContext(undefined);
@@ -304,14 +397,12 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       playbackContextRef.current = null;
     }
 
-    // Reset all audio-related state
     audioQueueRef.current = [];
     nextPlayTimeRef.current = 0;
     isProcessingRef.current = false;
     setIsListening(false);
     setError(null);
 
-    // Add a small delay to ensure complete cleanup
     await new Promise(resolve => setTimeout(resolve, 100));
   }, [stopRecording, audioContext]);
 
@@ -350,17 +441,63 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       [{ 'color': [] }, { 'background': [] }],
       [{ 'font': [] }],
       [{ 'align': [] }],
+      ['image'],
       ['clean']
     ];
 
     const quill = new Quill(editorDiv, {
       modules: {
-        toolbar: editMode ? toolbarOptions : false
+        toolbar: editMode ? toolbarOptions : false,
+        imageResize: {
+          modules: ['Resize']
+        }
       },
       theme: 'snow',
       placeholder: editMode ? 'Start writing your content...' : '',
       readOnly: !editMode
     });
+
+    // Add keyboard handler for image deletion
+    quill.keyboard.addBinding({ key: 'Backspace' }, {}, function(range: RangeStatic, context: KeyboardContext) {
+      if (context.format.image) {
+        quill.deleteText(range.index - 1, 1);
+      }
+    });
+
+    quill.keyboard.addBinding({ key: 'Delete' }, {}, function(range: RangeStatic, context: KeyboardContext) {
+      if (context.format.image) {
+        quill.deleteText(range.index, 1);
+      }
+    });
+
+    // Handle image upload with compression
+    if (editMode) {
+      const toolbar = quill.getModule('toolbar') as QuillToolbar;
+      toolbar.addHandler('image', () => {
+        const input = document.createElement('input');
+        input.setAttribute('type', 'file');
+        input.setAttribute('accept', 'image/*');
+        input.click();
+
+        input.onchange = async () => {
+          const file = input.files?.[0];
+          if (file) {
+            if (file.size > MAX_FILE_SIZE * 2) {
+              setImageError('Image file is too large. Please select an image under 400KB.');
+              return;
+            }
+            try {
+              const compressedImage = await compressImage(file);
+              const range = quill.getSelection(true);
+              quill.insertEmbed(range.index, 'image', compressedImage);
+            } catch (error) {
+              console.error('Failed to process image:', error);
+              setImageError(error instanceof Error ? error.message : 'Failed to process image');
+            }
+          }
+        };
+      });
+    }
 
     quillRef.current = quill;
     
@@ -508,12 +645,29 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
             padding: 1.5rem;
             min-height: 60%;
           }
+          .ql-editor img {
+            max-width: 100%;
+            height: auto;
+            cursor: ${editMode ? 'pointer' : 'default'};
+          }
           .ql-editor.ql-blank::before {
             display: ${editMode ? 'block' : 'none'};
           }
-          .save-status {
+          .image-error {
             position: fixed;
             top: 7rem;
+            right: 4rem;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            color: #dc2626;
+            background-color: #fee2e2;
+            border: 1px solid #fecaca;
+            z-index: 30;
+          }
+          .save-status {
+            position: fixed;
+            top: ${imageError ? '11rem' : '7rem'};
             right: 4rem;
             padding: 0.5rem 1rem;
             border-radius: 0.375rem;
@@ -546,6 +700,11 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
           }
         `}
       </style>
+      {imageError && (
+        <div className="image-error">
+          {imageError}
+        </div>
+      )}
       {!editMode && plainContent && (
         <div className="flex items-center gap-2 p-4 border-b border-gray-200">
           <button
@@ -585,14 +744,6 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
             >
               Context
             </button>
-            {/* <button
-              onClick={() => setActiveTab('style')}
-              className={`px-4 py-2 text-sm font-medium ${
-                activeTab === 'style' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Style
-            </button> */}
             <button
               onClick={() => setActiveTab('persona')}
               className={`px-4 py-2 text-sm font-medium ${
@@ -612,15 +763,6 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
                 placeholder="Add context here..."
               />
             )}
-            {/* {activeTab === 'style' && (
-              <textarea
-                key={`style-${moduleId}`}
-                value={localStyle}
-                onChange={handleStyleChange}
-                className="w-full h-full p-6 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="Add style here..."
-              />
-            )} */}
             {activeTab === 'persona' && (
               <textarea
                 key={`persona-${moduleId}`}
