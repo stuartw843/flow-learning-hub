@@ -41,6 +41,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
   const [localPersona, setLocalPersona] = useState(persona || '');
   const [activeTab, setActiveTab] = useState('context');
   const [isListening, setIsListening] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioContext, setAudioContext] = useState<AudioContext>();
   const [mediaStream, setMediaStream] = useState<MediaStream>();
@@ -112,7 +113,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
   }, []);
 
   const queueAudio = useCallback((audioData: Int16Array) => {
-    if (!playbackContextRef.current) {
+    if (!playbackContextRef.current || playbackContextRef.current.state === 'closed') {
       playbackContextRef.current = new AudioContext({ sampleRate: SAMPLE_RATE });
       nextPlayTimeRef.current = playbackContextRef.current.currentTime;
     }
@@ -123,12 +124,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
 
   const startRecording = useCallback(async (context: AudioContext, deviceId?: string) => {
   try {
-    // Check if permission is granted for microphone access
-    const permissions = await navigator.permissions.query({ name: 'microphone' });
-    if (permissions.state !== 'granted') {
-      throw new Error('Microphone permission is not granted.');
-    }
-
+    // Request microphone permission directly instead of querying
     console.log('Attempting to access user media...');
     const stream = await navigator.mediaDevices.getUserMedia({ 
       audio: deviceId ? { deviceId: { exact: deviceId } } : true 
@@ -159,7 +155,8 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
   } catch (error) {
     // Log and set error to help with debugging
     console.error('Error in startRecording:', error);
-    setError(error.message || 'Failed to start recording');
+    const errorMessage = error instanceof Error ? error.message : 'Failed to start recording';
+    setError(errorMessage);
     throw error; // rethrow the error if you want to handle it further up
   }
 }, []);
@@ -177,6 +174,12 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
 
   const startSession = useCallback(async () => {
     try {
+      // Ensure complete cleanup of previous session
+      await stopSession();
+      
+      setIsConnecting(true);
+      setError(null);
+
       // Cancel any existing fetch request
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -198,9 +201,18 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       
       const { token } = await resp.json();
       console.log('Credentials received, starting conversation...');
-      console.log(token)
+      
+      // Create fresh audio context
       const context = new AudioContext({ sampleRate: SAMPLE_RATE });
       setAudioContext(context);
+
+      // Create fresh playback context
+      if (playbackContextRef.current) {
+        await playbackContextRef.current.close();
+      }
+      playbackContextRef.current = new AudioContext({ sampleRate: SAMPLE_RATE });
+      nextPlayTimeRef.current = playbackContextRef.current.currentTime;
+      audioQueueRef.current = [];
 
       const messageHandler = (event: any) => {
         if (event.type === 'transcript') {
@@ -258,6 +270,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       }
       setIsListening(false);
     } finally {
+      setIsConnecting(false);
       abortControllerRef.current = null;
     }
   }, [startRecording, queueAudio, plainContent, style, persona]);
@@ -280,6 +293,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
     flowClient.endConversation();
     stopRecording();
 
+    // Ensure audio contexts are properly closed
     if (audioContext?.state !== 'closed') {
       await audioContext?.close();
       setAudioContext(undefined);
@@ -290,11 +304,15 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       playbackContextRef.current = null;
     }
 
+    // Reset all audio-related state
     audioQueueRef.current = [];
     nextPlayTimeRef.current = 0;
     isProcessingRef.current = false;
     setIsListening(false);
     setError(null);
+
+    // Add a small delay to ensure complete cleanup
+    await new Promise(resolve => setTimeout(resolve, 100));
   }, [stopRecording, audioContext]);
 
   const handleVoiceClick = () => {
@@ -514,22 +532,40 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
             height: calc(100vh - 13rem);
             overflow-y: auto;
           }
+          @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+          }
+          .mic-pulse {
+            animation: pulse 1.5s infinite;
+          }
+          .mic-connecting {
+            opacity: 0.7;
+            cursor: wait;
+          }
         `}
       </style>
       {!editMode && plainContent && (
         <div className="flex items-center gap-2 p-4 border-b border-gray-200">
           <button
             onClick={handleVoiceClick}
+            disabled={isConnecting}
             className={`p-2 rounded-full ${
-              isListening ? 'bg-red-500' : 'bg-blue-500'
-            } text-white hover:opacity-80 transition-opacity`}
-            title={error || (isListening ? 'Stop conversation' : 'Start conversation')}
+              isListening ? 'bg-red-500 mic-pulse' : isConnecting ? 'bg-gray-400 mic-connecting' : 'bg-blue-500'
+            } text-white hover:opacity-80 transition-opacity relative`}
+            title={error || (isConnecting ? 'Connecting...' : isListening ? 'Stop conversation' : 'Start conversation')}
           >
-            <FaMicrophone className="w-5 h-5" />
+            <FaMicrophone className={`w-5 h-5 ${isConnecting ? 'opacity-50' : ''}`} />
           </button>
-          <span className="text-gray-700 font-medium">Click To Start Voice Simulated Scenario</span>
+          <span className="text-gray-700 font-medium">
+            {isConnecting ? 'Connecting...' : isListening ? 'Recording...' : 'Click To Start Voice Simulated Scenario'}
+          </span>
           {error && (
-            <div className="ml-4 p-2 bg-red-100 text-red-700 rounded text-sm">
+            <div className="ml-4 p-2 bg-red-100 text-red-700 rounded text-sm flex items-center">
+              <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
               {error}
             </div>
           )}
