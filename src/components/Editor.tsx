@@ -5,6 +5,18 @@ import 'quill/dist/quill.snow.css';
 import { FaMicrophone } from 'react-icons/fa';
 import { FlowClient } from "@speechmatics/flow-client";
 import { config } from '../config';
+
+declare global {
+  interface Window {
+    Quill: typeof Quill;
+  }
+}
+
+// Make Quill globally available
+if (typeof window !== 'undefined') {
+  window.Quill = Quill;
+}
+
 import ImageResize from 'quill-image-resize-module-react';
 
 // Register the image resize module
@@ -457,17 +469,69 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
       readOnly: !editMode
     });
 
-    // Add keyboard handler for image deletion
-    quill.keyboard.addBinding({ key: 'Backspace' }, {}, function(range: RangeStatic, context: KeyboardContext) {
-      if (context.format.image) {
-        quill.deleteText(range.index - 1, 1);
+    // Enhanced image handling
+    const checkImage = (range: RangeStatic) => {
+      if (!range) return false;
+      try {
+        const [leaf] = quill.getLeaf(range.index);
+        return leaf?.domNode instanceof HTMLElement && leaf.domNode.tagName === 'IMG';
+      } catch {
+        return false;
       }
+    };
+
+    // Handle image deletion for both keyboard and selection
+    const handleImageDelete = (range: RangeStatic) => {
+      if (!range) return false;
+
+      // Check if there's a selected range
+      if (range.length > 0) {
+        const [leaf] = quill.getLeaf(range.index);
+        if (leaf?.domNode instanceof HTMLElement && leaf.domNode.tagName === 'IMG') {
+          quill.deleteText(range.index, 1);
+          return true;
+        }
+        return false;
+      }
+
+      // Check current position for delete key
+      if (checkImage(range)) {
+        quill.deleteText(range.index, 1);
+        return true;
+      }
+
+      // Check previous position for backspace
+      if (range.index > 0 && checkImage({ index: range.index - 1, length: 0 })) {
+        quill.deleteText(range.index - 1, 1);
+        return true;
+      }
+
+      return false;
+    };
+
+    // Add keyboard bindings
+    quill.keyboard.addBinding({ key: 'Backspace' }, {}, function(range: RangeStatic) {
+      return handleImageDelete(range);
     });
 
-    quill.keyboard.addBinding({ key: 'Delete' }, {}, function(range: RangeStatic, context: KeyboardContext) {
-      if (context.format.image) {
-        quill.deleteText(range.index, 1);
-      }
+    quill.keyboard.addBinding({ key: 'Delete' }, {}, function(range: RangeStatic) {
+      return handleImageDelete(range);
+    });
+
+    // Handle selection change for image deletion
+    quill.on('selection-change', function(range: RangeStatic | null) {
+      if (!range) return;
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if ((e.key === 'Delete' || e.key === 'Backspace') && handleImageDelete(range)) {
+          e.preventDefault();
+        }
+      };
+
+      document.addEventListener('keydown', handleKeyDown);
+      return () => {
+        document.removeEventListener('keydown', handleKeyDown);
+      };
     });
 
     // Handle image upload with compression
@@ -498,6 +562,36 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
         };
       });
     }
+
+    // Handle drag and drop for images
+    editorDiv.addEventListener('drop', async (e: DragEvent) => {
+      if (!editMode) return;
+      
+      e.preventDefault();
+      if (!e.dataTransfer?.files.length) return;
+
+      const file = e.dataTransfer.files[0];
+      if (!file.type.startsWith('image/')) return;
+
+      if (file.size > MAX_FILE_SIZE * 2) {
+        setImageError('Image file is too large. Please select an image under 400KB.');
+        return;
+      }
+
+      try {
+        const compressedImage = await compressImage(file);
+        const range = quill.getSelection(true);
+        quill.insertEmbed(range.index, 'image', compressedImage);
+      } catch (error) {
+        console.error('Failed to process image:', error);
+        setImageError(error instanceof Error ? error.message : 'Failed to process image');
+      }
+    });
+
+    editorDiv.addEventListener('dragover', (e: DragEvent) => {
+      if (!editMode) return;
+      e.preventDefault();
+    });
 
     quillRef.current = quill;
     
@@ -532,7 +626,7 @@ function Editor({ moduleId, content, plainContent, style, persona, title, onChan
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [moduleId, editMode]);
+  }, [moduleId, editMode, onChange]);
 
   useEffect(() => {
     if (!quillRef.current || content === lastContentRef.current) return;
